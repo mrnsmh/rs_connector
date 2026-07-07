@@ -287,13 +287,6 @@ Les contributions sont bienvenues ! Ouvrez une *issue* pour discuter d'un change
 puis une *pull request*. Merci de garder les **tests verts** (`npm test`) et de **ne jamais**
 committer de secret (`.env`, `.data/`, credentials).
 
-## Remerciements
-
-Le canal WhatsApp non officiel est propulsé par **[Baileys](https://github.com/WhiskeySockets/Baileys)**
-(`@whiskeysockets/baileys`). Merci également aux projets [Express](https://expressjs.com),
-[pino](https://getpino.io), [node-postgres](https://node-postgres.com), [Vite](https://vitejs.dev)
-et [React](https://react.dev).
-
 ## Licence
 
 [MIT](./LICENSE) © 2026 mrnsmh
