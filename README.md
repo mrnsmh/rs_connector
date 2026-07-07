@@ -17,6 +17,12 @@ chaque application cliente via des **webhooks signés**. Un **back-office sécur
 > Une application n'a jamais besoin de connaître Baileys, l'API Meta ou Telegram : elle parle à une
 > seule API et reçoit des événements normalisés.
 
+<p align="center">
+  <img src="./docs/img/back-office-login.png" alt="Back-office rs-connector — console d'administration sécurisée (écran de connexion)" width="720">
+  <br>
+  <em>Back-office sécurisé (mot de passe + 2FA TOTP) — écran de connexion.</em>
+</p>
+
 ---
 
 ## Sommaire
