@@ -18,9 +18,15 @@ chaque application cliente via des **webhooks signés**. Un **back-office sécur
 > seule API et reçoit des événements normalisés.
 
 <p align="center">
-  <img src="./docs/img/back-office-login.png" alt="Back-office rs-connector — console d'administration sécurisée (écran de connexion)" width="720">
+  <img src="./docs/img/back-office-connexions.png" alt="Back-office rs-connector — gestion des connexions de canal" width="720">
   <br>
-  <em>Back-office sécurisé (mot de passe + 2FA TOTP) — écran de connexion.</em>
+  <em>Back-office — gestion des connexions de canal : statut temps réel, canal par défaut, envoi de test.</em>
+</p>
+
+<p align="center">
+  <img src="./docs/img/back-office-endpoint.png" alt="Back-office rs-connector — panneau d'intégration (API)" width="720">
+  <br>
+  <em>Panneau « Endpoint d'intégration » : URL de base, endpoints et exemple d'appel prêt à copier.</em>
 </p>
 
 ---
