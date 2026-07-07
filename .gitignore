@@ -1,0 +1,25 @@
+# Dépendances
+node_modules/
+
+# Build
+dist/
+
+# Données locales de test & SECRETS — ne jamais committer
+# (.data contient la clé de chiffrement, le mot de passe DB, l'auth WhatsApp, les cookies…)
+.data/
+
+# Variables d'environnement (garder uniquement .env.example)
+.env
+.env.*
+!.env.example
+
+# Logs & divers
+*.log
+.DS_Store
+
+# Python / Django
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+staticfiles/

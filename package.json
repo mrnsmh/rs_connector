@@ -1,0 +1,28 @@
+{
+  "name": "rs-connector",
+  "version": "0.1.0",
+  "description": "rs-connector — hub de messagerie multi-canal indépendant (WhatsApp Baileys + Meta Cloud API, Telegram, Email, ...), brancheable sur plusieurs applications via clé API et webhooks signés.",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc13",
+    "express": "4.22.2",
+    "imapflow": "1.4.3",
+    "mailparser": "3.9.12",
+    "nodemailer": "9.0.3",
+    "pg": "8.13.1",
+    "pino": "9.6.0",
+    "pino-http": "10.4.0"
+  },
+  "devDependencies": {
+    "supertest": "7.0.0"
+  }
+}

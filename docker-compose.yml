@@ -1,0 +1,65 @@
+name: rs-connector
+
+# Stack indépendante : rs-connector ne référence, ne dépend et ne partage AUCUNE ressource
+# (base, volume, réseau) avec les autres services. Il se branche sur les applications
+# clientes uniquement via HTTP (API d'entrée + webhooks sortants signés).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rs_connector}
+      POSTGRES_USER: ${DB_USER:-rs_connector}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - rs_connector_pg_data:/var/lib/postgresql/data
+      - ./.data/pg-init:/docker-entrypoint-initdb.d:ro
+    networks: [ internal ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rs_connector} -d ${DB_NAME:-rs_connector}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  rs-connector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rs-connector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3007"
+      AUTH_DIR: /data/auth
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-rs_connector}
+      DB_USER: ${DB_USER:-rs_connector}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db: { condition: service_healthy }
+    volumes:
+      - ./.data/auth:/data/auth
+    networks: [ internal, apps-bridge ]
+    ports:
+      - "127.0.0.1:${PORT:-3007}:3007"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3007/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+networks:
+  internal:
+    driver: bridge
+  # Réseau externe dédié à la communication avec les applications clientes branchées
+  # (elles émettent des POST vers l'API d'entrée de rs-connector et en reçoivent les webhooks).
+  # À créer une fois : `docker network create rs-connector-apps`.
+  apps-bridge:
+    external: true
+    name: rs-connector-apps
+
+volumes:
+  rs_connector_auth:
+  rs_connector_pg_data:
