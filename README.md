@@ -54,10 +54,14 @@ chaque application cliente via des **webhooks signés**. Un **back-office sécur
 
   | Canal | `channel_type` | Auth | Sens entrant |
   |---|---|---|---|
-  | WhatsApp (non officiel) | `whatsapp_baileys` | appairage par **QR** | socket temps réel |
+  | WhatsApp · Baileys (non officiel) | `whatsapp_baileys` | appairage par **QR** | socket temps réel |
   | WhatsApp Cloud API (Meta) | `whatsapp_cloud` | `token` + `phone_number_id` | webhook Meta |
   | Telegram | `telegram` | token de bot | long-polling |
   | Email | `email` | SMTP + IMAP | polling IMAP |
+
+  > ℹ️ Le canal WhatsApp non officiel repose sur la bibliothèque **[Baileys](https://github.com/WhiskeySockets/Baileys)**
+  > (`@whiskeysockets/baileys`), **non affiliée à WhatsApp/Meta** — à utiliser en connaissance des
+  > conditions d'utilisation de WhatsApp. Pour un usage officiel, préférez le canal **WhatsApp Cloud API**.
 
 - **Multi-application** — chaque application possède une **clé API** (stockée **hachée**, SHA-256)
   et reçoit ses **webhooks signés**. **Scoping strict** : une application ne voit et n'agit que sur
@@ -282,6 +286,13 @@ entre applications, secret webhook par application dans l'outbox, canaux additio
 Les contributions sont bienvenues ! Ouvrez une *issue* pour discuter d'un changement important,
 puis une *pull request*. Merci de garder les **tests verts** (`npm test`) et de **ne jamais**
 committer de secret (`.env`, `.data/`, credentials).
+
+## Remerciements
+
+Le canal WhatsApp non officiel est propulsé par **[Baileys](https://github.com/WhiskeySockets/Baileys)**
+(`@whiskeysockets/baileys`). Merci également aux projets [Express](https://expressjs.com),
+[pino](https://getpino.io), [node-postgres](https://node-postgres.com), [Vite](https://vitejs.dev)
+et [React](https://react.dev).
 
 ## Licence
 
