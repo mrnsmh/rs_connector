@@ -146,3 +146,39 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   locked_until  TIMESTAMPTZ,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Comptes UTILISATEURS self-service (chaque utilisateur crée et gère ses propres
+-- applications et canaux, isolé des autres). Distinct des comptes admin (back-office).
+-- Mot de passe haché (scrypt) ; le token de session n'est jamais stocké, seul son SHA-256.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'active',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id         TEXT PRIMARY KEY,                                  -- SHA-256 du token de session
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  csrf_token TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+
+-- Propriétaire d'une application (self-service). NULL = application créée par l'admin
+-- (back-office) — rétrocompatible. La suppression d'un utilisateur supprime ses applications
+-- (et, par cascade existante, leurs connexions).
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_applications_user ON applications(user_id);
+
+-- Vérification d'email (comme desklink). Défaut `true` : n'impacte pas les comptes existants
+-- ni le mode sans SMTP ; les nouveaux comptes créés avec SMTP configuré sont insérés à `false`.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_expires TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token);

@@ -59,6 +59,22 @@ const config = {
     cookieSecure: required('ADMIN_COOKIE_SECURE', 'true') !== 'false',
   },
 
+  // SMTP système pour les emails transactionnels (vérification d'email des comptes utilisateurs).
+  // Absent (SYSTEM_SMTP_HOST vide) ⇒ vérification désactivée, comptes auto-vérifiés (dégradation gracieuse).
+  systemSmtp: (() => {
+    const host = required('SYSTEM_SMTP_HOST', '');
+    if (!host) return null;
+    const user = required('SYSTEM_SMTP_USER', '');
+    return {
+      host,
+      port: parseInt(required('SYSTEM_SMTP_PORT', '465'), 10),
+      secure: required('SYSTEM_SMTP_SECURE', 'true') !== 'false',
+      user,
+      pass: required('SYSTEM_SMTP_PASS', ''),
+      from: required('SYSTEM_SMTP_FROM', user),
+    };
+  })(),
+
   // Clé de chiffrement AES-256-GCM des credentials au repos (Task 11) : 32 octets en
   // base64/hex, injectée hors DB. Vide ⇒ la création de connexions avec secrets est
   // refusée (fail-closed).

@@ -7,6 +7,8 @@ const { LidUnresolvedError } = require('./contact-resolver');
 const { createApiKeyAuth } = require('./auth-apikey');
 const { verifyMetaSignature, checkVerification, extractInboundEvents } = require('./whatsapp-cloud-webhook');
 const { createAdminRouter } = require('./admin/routes');
+const { createUserRouter } = require('./user/routes');
+const { createRequireAdmin } = require('./admin/auth-admin');
 const adapterRegistry = require('./adapters');
 const path = require('node:path');
 
@@ -20,7 +22,7 @@ const path = require('node:path');
  * @param {object} [options.db] - Accès DB (Task 3), optionnel selon les endpoints appelés.
  */
 function createApp(options = {}) {
-  const { connectionManager, db, rateLimiter, whatsappCloud, admin, vault, publicBaseUrl = '', workerToken = process.env.WORKER_TOKEN } = options;
+  const { connectionManager, db, rateLimiter, whatsappCloud, admin, vault, publicBaseUrl = '', workerToken = process.env.WORKER_TOKEN, systemMailer = null } = options;
   // Anti-abus : limite de requetes /v1/messages par application et par minute (0 = desactive).
   const v1RateLimitPerMin = options.v1RateLimitPerMin !== undefined
     ? options.v1RateLimitPerMin
@@ -53,6 +55,17 @@ function createApp(options = {}) {
   // provisioning (apps/connexions avec credentials chiffrés).
   app.use('/admin', createAdminRouter({ db, admin, vault, connectionManager, adapterRegistry, publicBaseUrl }));
 
+  // Espace SELF-SERVICE utilisateur : routes /u (inscription/connexion/session + gestion de
+  // SES applications et canaux, isolées par utilisateur). Cookie de session dédié (rsconnector_user).
+  app.use('/u', createUserRouter({ db, vault, connectionManager, adapterRegistry, mailer: systemMailer, publicBaseUrl, user: { cookieSecure: !admin || admin.cookieSecure !== false } }));
+
+  // Sécurité : les endpoints de diagnostic/gestion GLOBAUX ci-dessous (héritage Tasks 2–6)
+  // étaient exposés SANS authentification alors que nginx route « / » vers ce service. Ils
+  // sont désormais réservés à une session admin authentifiée (OTP vérifié + CSRF sur les
+  // mutations), en réutilisant la MÊME garde que le back-office /admin. Les usages scopés
+  // par utilisateur/application restent sur /u et /v1 (inchangés).
+  const requireAdmin = createRequireAdmin(db);
+
   function requireConnectionManager(req, res) {
     if (!connectionManager) {
       res.status(503).json({ error: 'Gestionnaire de session non initialisé' });
@@ -62,7 +75,7 @@ function createApp(options = {}) {
   }
 
   // Liste toutes les connections actives (toutes connexions) — utile pour un tableau de bord.
-  app.get('/connections', (req, res) => {
+  app.get('/connections', requireAdmin, (req, res) => {
     if (!requireConnectionManager(req, res)) return;
     res.status(200).json({ connexions: connectionManager.list(), states: connectionManager.getAllStates() });
   });
@@ -72,7 +85,7 @@ function createApp(options = {}) {
   // Task 4 : la persistance DB de CHAQUE transition est désormais gérée automatiquement
   // par le callback onConnectionStateChange (voir connection-manager-factory.js), plus
   // besoin de persister manuellement ici l'état au moment de la création.
-  app.get('/connections/:connectionId/qr', async (req, res) => {
+  app.get('/connections/:connectionId/qr', requireAdmin, async (req, res) => {
     if (!requireConnectionManager(req, res)) return;
     try {
       const { connectionId } = req.params;
@@ -85,7 +98,7 @@ function createApp(options = {}) {
     }
   });
 
-  app.get('/connections/:connectionId', (req, res) => {
+  app.get('/connections/:connectionId', requireAdmin, (req, res) => {
     if (!requireConnectionManager(req, res)) return;
     const session = connectionManager.get(req.params.connectionId);
     if (!session) return res.status(404).json({ error: 'Session inconnue pour cette connexion' });
@@ -95,7 +108,7 @@ function createApp(options = {}) {
   // Task 6 : configuration de l'URL webhook propre à une connexion (destinataire des
   // événements message.received / message.status_changed / session.connected/disconnected).
   // Si non configurée, le dispatcher retombe sur DEFAULT_WEBHOOK_URL (voir index.js).
-  app.patch('/connections/:connectionId/webhook', async (req, res) => {
+  app.patch('/connections/:connectionId/webhook', requireAdmin, async (req, res) => {
     if (!db) {
       return res.status(503).json({ error: 'Base de données non initialisée' });
     }
@@ -118,7 +131,7 @@ function createApp(options = {}) {
 
   // Task 6 : historique des événements webhook (outbox) d'une connexion — utile pour
   // diagnostiquer un webhook resté `pending` ou passé en `failed_permanent`.
-  app.get('/connections/:connectionId/webhooks', async (req, res) => {
+  app.get('/connections/:connectionId/webhooks', requireAdmin, async (req, res) => {
     if (!db) {
       return res.status(503).json({ error: 'Base de données non initialisée' });
     }
@@ -136,7 +149,7 @@ function createApp(options = {}) {
   // (sent -> delivered -> read, ou sent -> failed -> retry -> sent...).
   // Correctif post-relecture critique : inclut aussi les transitions rejetées
   // (anomalies) pour ce message, auparavant uniquement disponibles dans les logs.
-  app.get('/messages/:messageId/status-history', async (req, res) => {
+  app.get('/messages/:messageId/status-history', requireAdmin, async (req, res) => {
     if (!db) {
       return res.status(503).json({ error: 'Base de données non initialisée' });
     }
@@ -155,7 +168,7 @@ function createApp(options = {}) {
   // Correctif post-relecture critique : vue globale des anomalies de statut les plus
   // récentes (toutes connexions), pour diagnostiquer sans devoir chercher un message_id
   // précis — utile pour détecter un pattern (ex. un type de statut Baileys mal géré).
-  app.get('/anomalies', async (req, res) => {
+  app.get('/anomalies', requireAdmin, async (req, res) => {
     if (!db) {
       return res.status(503).json({ error: 'Base de données non initialisée' });
     }
@@ -315,6 +328,83 @@ function createApp(options = {}) {
       });
     } catch (err) {
       logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur détail connexion /v1');
+      return res.status(500).json({ error: 'Erreur interne' });
+    }
+  });
+
+  // QR code d'une connexion possédée par l'application appelante. Crée la session Baileys
+  // (getOrCreate — idempotent) si nécessaire et retourne son état (qr, connected, status).
+  // Alternative authentifiée par clé API à la route legacy /connections/:connectionId/qr
+  // qui est désormais réservée au back-office admin (requireAdmin).
+  app.get('/v1/connections/:connectionId/qr', apiKeyAuth, async (req, res) => {
+    if (!connectionManager) {
+      return res.status(503).json({ error: 'Gestionnaire de session non initialisé' });
+    }
+    try {
+      const row = await db.getConnectionForApplication(req.application.id, req.params.connectionId);
+      if (!row) return res.status(404).json({ error: 'connection_not_found' });
+      const session = await connectionManager.getOrCreate(req.params.connectionId);
+      await session.connect();
+      return res.status(200).json(session.getState());
+    } catch (err) {
+      logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur récupération QR /v1');
+      return res.status(500).json({ error: 'Erreur interne' });
+    }
+  });
+
+  // Auto-provisioning (self-service) : une application enregistre SA propre connexion, scopée à
+  // elle-même. Idempotent — renvoie l'existante si elle appartient déjà à l'app, refuse (409)
+  // si elle appartient à une autre application. Permet le schéma « une connexion par
+  // organisation » côté application, sans passer par le back-office admin.
+  app.post('/v1/connections', apiKeyAuth, v1RateLimit, async (req, res) => {
+    const { connectionId, channelType = 'whatsapp_baileys', credentials = null, webhookUrl = null } = req.body || {};
+    if (!connectionId || typeof connectionId !== 'string') {
+      return res.status(400).json({ error: 'bad_request', message: 'connectionId requis' });
+    }
+    if (adapterRegistry && typeof adapterRegistry.getAdapter === 'function' && !adapterRegistry.getAdapter(channelType)) {
+      return res.status(400).json({ error: 'unknown_channel_type', message: `canal inconnu: ${channelType}` });
+    }
+    try {
+      const existing = await db.getConnection(connectionId);
+      if (existing && existing.application_id && existing.application_id !== req.application.id) {
+        return res.status(409).json({ error: 'connection_conflict', message: 'connectionId déjà utilisé par une autre application' });
+      }
+      // Credentials optionnels (ex. token de bot Telegram). Self-service : une application peut,
+      // avec sa SEULE clé API, enregistrer ET connecter sa connexion — sans passer par l'admin.
+      // Chiffrés au repos (fail-closed : refus de stocker un secret sans coffre). Non fournis →
+      // COALESCE en base préserve un token/webhook déjà présents (idempotent).
+      const hasCreds = credentials && typeof credentials === 'object' && Object.keys(credentials).length > 0;
+      let credentialsEncrypted;
+      if (hasCreds) {
+        if (!vault) {
+          return res.status(400).json({ error: 'encryption_not_configured', message: 'CREDENTIALS_ENCRYPTION_KEY requis pour stocker des credentials' });
+        }
+        credentialsEncrypted = vault.encryptJson(credentials);
+      }
+      await db.upsertConnection({
+        connectionId,
+        channelType,
+        applicationId: req.application.id,
+        webhookUrl: webhookUrl || undefined,
+        credentialsEncrypted,
+        status: hasCreds ? 'initializing' : (existing ? existing.status : 'disconnected'),
+      });
+      // Si des credentials sont fournis, on tente la connexion live immédiate (getOrCreate +
+      // connect). Pour Telegram : getMe valide le token puis démarre le long polling.
+      let state = null;
+      if (hasCreds && connectionManager) {
+        try {
+          const adapter = await connectionManager.getOrCreate(connectionId, { channelType, credentials });
+          if (adapter && typeof adapter.connect === 'function') await adapter.connect();
+          state = adapter && typeof adapter.getState === 'function' ? adapter.getState() : null;
+        } catch (connErr) {
+          logger.error({ err: connErr.message, connectionId }, 'Connexion live /v1 échouée');
+          return res.status(502).json({ error: 'connect_failed', message: connErr.message, connectionId });
+        }
+      }
+      return res.status(existing ? 200 : 201).json({ connectionId, channelType, applicationId: req.application.id, created: !existing, state });
+    } catch (err) {
+      logger.error({ err: err.message, connectionId }, 'Erreur création connexion /v1');
       return res.status(500).json({ error: 'Erreur interne' });
     }
   });

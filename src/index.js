@@ -14,6 +14,7 @@ const { createWebhookSigner } = require('./webhook-signer');
 const { createWebhookDispatcher } = require('./webhook-dispatcher');
 const { restoreKnownSessions } = require('./session-restore');
 const { createVault } = require('./crypto-vault');
+const { createSystemMailer } = require('./mailer');
 
 const WEBHOOK_POLL_INTERVAL_MS = 10_000;
 
@@ -84,7 +85,11 @@ async function main() {
   }
   webhookPollTimer = setTimeout(pollWebhookOutbox, WEBHOOK_POLL_INTERVAL_MS);
 
-  const app = createApp({ connectionManager, db, rateLimiter, webhookSigner, whatsappCloud: config.whatsappCloud, admin: config.admin, vault, publicBaseUrl: config.publicBaseUrl, v1RateLimitPerMin: config.v1RateLimitPerMin });
+  const systemMailer = createSystemMailer(config.systemSmtp);
+  if (systemMailer) logger.info('Mailer système configuré (vérification email active)');
+  else logger.warn('SYSTEM_SMTP non configuré : vérification email désactivée (comptes auto-vérifiés)');
+
+  const app = createApp({ connectionManager, db, rateLimiter, webhookSigner, whatsappCloud: config.whatsappCloud, admin: config.admin, vault, publicBaseUrl: config.publicBaseUrl, v1RateLimitPerMin: config.v1RateLimitPerMin, systemMailer });
 
   const server = app.listen(config.port, () => {
     logger.info({ port: config.port }, 'rs-connector démarré');
