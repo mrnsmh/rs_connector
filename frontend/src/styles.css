@@ -70,9 +70,41 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* ---------- Structure ---------- */
 header.topbar {
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  border-bottom: 1px solid transparent; background: transparent;
+  position: sticky; top: 0; z-index: 5;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.topbar-inner {
   display: flex; align-items: center; gap: 12px; padding: 13px 24px;
   border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #ffffff, var(--bg-elev));
-  position: sticky; top: 0; z-index: 5;
+  width: 100%;
+}
+
+/* Floating pill navbar — desktop only */
+@media (min-width: 1025px) {
+  header.topbar {
+    border-bottom-color: transparent;
+    background: transparent;
+  }
+  .topbar-inner {
+    max-width: 1040px;
+    height: 54px;
+    margin: 8px auto 0;
+    padding: 0 14px 0 20px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px -20px rgba(16, 24, 40, 0.24);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  header.topbar.scrolled .topbar-inner {
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 16px 42px -22px rgba(16, 24, 40, 0.34);
+  }
 }
 .brand { display: flex; align-items: center; gap: 11px; }
 .brand .mark { display: inline-flex; }
@@ -166,8 +198,22 @@ td code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fo
 /* ---------- Mobile responsive ---------- */
 @media (max-width: 640px) {
   header.topbar {
-    padding: 10px 14px;
+    padding: 0;
     flex-wrap: wrap;
+    background: linear-gradient(180deg, #ffffff, var(--bg-elev));
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    padding: 10px 14px;
+    max-width: none;
+    height: auto;
+    margin: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   .brand .word .sub {
     display: none; /* masque "Console d'administration" sur mobile */

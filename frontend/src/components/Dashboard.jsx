@@ -94,6 +94,17 @@ function QrView({ connectionId }) {
     return () => { alive = false; clearInterval(iv); };
   }, [connectionId]);
 
+  // Floating pill: add 'scrolled' class to header on scroll
+  useEffect(() => {
+    const header = document.querySelector('.topbar');
+    if (!header) return;
+    const onScroll = () => {
+      header.classList.toggle('scrolled', window.scrollY > 10);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   if (!state) return <p className="muted">Chargement de l'état…</p>;
   if (state.status === 'connected') return <p className="ok">✓ Appareil connecté</p>;
   if (dataUrl) {
@@ -406,13 +417,15 @@ export default function Dashboard({ onLogout }) {
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <span className="mark"><Logo size={30} /></span>
-          <span className="word"><b>RS-Connector</b><span className="sub">Console d'administration</span></span>
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="mark"><Logo size={30} /></span>
+            <span className="word"><b>RS-Connector</b><span className="sub">Console d'administration</span></span>
+          </div>
+          <span className="spacer" />
+          {meUser && <span className="who">Connecté : <b>{meUser}</b></span>}
+          <button className="secondary" onClick={onLogout}>Déconnexion</button>
         </div>
-        <span className="spacer" />
-        {meUser && <span className="who">Connecté : <b>{meUser}</b></span>}
-        <button className="secondary" onClick={onLogout}>Déconnexion</button>
       </header>
       <main className="dash">
         <div className="summary">
