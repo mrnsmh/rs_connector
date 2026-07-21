@@ -105,6 +105,27 @@ function QrView({ connectionId }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Scroll-reveal: animate elements with .reveal class on viewport entry
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('revealed'));
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
+    );
+    document.querySelectorAll('.reveal:not(.revealed)').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   if (!state) return <p className="muted">Chargement de l'état…</p>;
   if (state.status === 'connected') return <p className="ok">✓ Appareil connecté</p>;
   if (dataUrl) {
