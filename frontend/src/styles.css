@@ -341,3 +341,51 @@ td code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fo
   }
   .cta-band-text { font-size: 0.82rem; }
 }
+
+/* ============================================================
+   C3 — Micro-interactions
+   ============================================================ */
+
+/* Button hover lift */
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
+}
+
+/* Link underline animation */
+a[href] {
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.2s ease, color 0.2s ease;
+}
+a[href]:hover {
+  text-decoration-color: var(--accent);
+}
+
+/* Badge subtle scale on hover */
+.badge:hover {
+  transform: scale(1.05);
+  transition: transform 0.15s ease;
+}
+
+/* Card smooth entrance */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.card {
+  animation: fade-in-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Input focus ring pulse */
+input:focus, select:focus, textarea:focus {
+  animation: focus-ring-pulse 0.3s ease;
+}
+@keyframes focus-ring-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.25); }
+  100% { box-shadow: var(--ring); }
+}
