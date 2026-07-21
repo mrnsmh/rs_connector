@@ -389,3 +389,28 @@ input:focus, select:focus, textarea:focus {
   0% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.25); }
   100% { box-shadow: var(--ring); }
 }
+
+/* ============================================================
+   C4 — Responsive final pass
+   ============================================================ */
+
+/* Safe area insets for notch devices */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .cta-band {
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom));
+  }
+  header.topbar {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Mobile: tighter spacing */
+@media (max-width: 640px) {
+  .card { padding: 1rem !important; }
+  table { font-size: 12.5px; }
+}
+
+/* Mobile: stack grids */
+@media (max-width: 480px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr !important; }
+}
