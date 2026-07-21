@@ -100,9 +100,9 @@ button:disabled { opacity: .5; cursor: default; }
 header.topbar {
   display: flex; align-items: center; justify-content: center; padding: 0;
   position: sticky; top: 0; z-index: 5; height: 54px;
-  background: rgba(255,255,255,0.94);
-  backdrop-filter: saturate(180%) blur(12px);
-  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
@@ -111,19 +111,43 @@ header.topbar.scrolled {
   box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 .topbar-inner {
-  display: flex; align-items: center; gap: 12px; padding: 0 1.25rem;
+  display: flex; align-items: center; gap: 12px; padding: 0 1rem;
   width: 100%; max-width: 1320px; margin: 0 auto; height: 100%;
+}
+
+/* Floating pill navbar — desktop only */
+@media (min-width: 1025px) {
+  header.topbar { background: transparent; border-bottom-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+  header.topbar.scrolled { background: transparent; box-shadow: none; }
+  .topbar-inner {
+    max-width: 1040px;
+    height: 50px;
+    width: calc(100% - 32px);
+    margin: 10px auto 0;
+    padding: 0 14px 0 18px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px -16px rgba(16, 24, 40, 0.18);
+    transition: background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  header.topbar.scrolled .topbar-inner {
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 12px 32px -18px rgba(16, 24, 40, 0.26);
+  }
 }
 
 .brand { display: flex; align-items: center; gap: 11px; }
 .brand .mark { display: inline-flex; }
 .brand .word { display: flex; flex-direction: column; line-height: 1.15; }
-.brand .word b { font-size: 15.5px; font-weight: 650; letter-spacing: -.1px; }
-.brand .word .sub { color: var(--muted); font-size: 11px; letter-spacing: .4px; text-transform: uppercase; }
+.brand .word b { font-size: 0.88rem; font-weight: 650; letter-spacing: -.1px; }
+.brand .word .sub { color: var(--muted); font-size: 0.65rem; letter-spacing: .4px; text-transform: uppercase; }
 .spacer { flex: 1; }
 .who { color: var(--muted); font-size: 13px; margin-right: 14px; }
 .who b { color: var(--text); font-weight: 600; }
-header.topbar button { width: auto; margin: 0; padding: 8px 15px; }
+header.topbar button { width: auto; margin: 0; padding: 7px 13px; font-size: 0.75rem; }
 
 main.dash { max-width: 1000px; margin: 0 auto; padding: 26px 24px 60px; }
 .summary { display: flex; gap: 22px; padding: 2px 2px 20px; color: var(--muted); font-size: 13px; }
