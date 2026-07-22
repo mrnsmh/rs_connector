@@ -120,7 +120,7 @@ header.topbar.scrolled {
   header.topbar { background: transparent; border-bottom-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
   header.topbar.scrolled { background: transparent; box-shadow: none; }
   .topbar-inner {
-    max-width: 1040px;
+    max-width: 1320px;
     height: 54px;
     width: calc(100% - 32px);
     margin: 10px auto 0;
