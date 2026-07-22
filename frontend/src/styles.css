@@ -121,7 +121,7 @@ header.topbar.scrolled {
   header.topbar.scrolled { background: transparent; box-shadow: none; }
   .topbar-inner {
     max-width: 1040px;
-    height: 50px;
+    height: 54px;
     width: calc(100% - 32px);
     margin: 10px auto 0;
     padding: 0 14px 0 18px;
