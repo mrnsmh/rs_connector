@@ -1,0 +1,23 @@
+{
+  "name": "RS Connect",
+  "short_name": "RSConnect",
+  "description": "Hub de messagerie multicanal — WhatsApp, email, réseaux sociaux en un seul endroit.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#0f766e",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity", "communication"],
+  "lang": "fr",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
