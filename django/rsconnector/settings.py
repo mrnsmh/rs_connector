@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'hub',
+    'deskshared',
 ]
 
 MIDDLEWARE = [
@@ -163,3 +164,25 @@ STORAGES = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── DeskShared settings ──
+DESKSHARED_PROJECT_KEY = "rs_connector"
+DESKSHARED_ADMIN_ACCESS = True
+
+DESKSHARED_COMPOSE_PROJECTS = {
+    "deskassist": "desklink",
+    "desklink": "desklink-backend",
+    "studio": "desklink-studio",
+    "rs_connector": "rs-connector",
+    "immo": "deploy",
+    "deskhub": "deskhub",
+}
+
+DESKSHARED_SERVICE_URLS = {
+    "deskassist": "http://127.0.0.1:8000",
+    "desklink": "http://127.0.0.1:8010",
+    "studio": "http://127.0.0.1:8020",
+    "rs_connector": "http://127.0.0.1:3019",
+    "immo": "http://127.0.0.1:8030",
+    "deskhub": "http://127.0.0.1:9221",
+}

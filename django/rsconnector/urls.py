@@ -18,10 +18,25 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 from django.views.generic.base import RedirectView
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+from deskshared.checks import run_all_checks, compute_overall
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_full(request):
+    checks = run_all_checks()
+    overall = compute_overall(checks)
+    return Response({"overall": overall, "checks": checks})
+
 
 urlpatterns = [
     path('console/', admin.site.urls),
     path('health', lambda request: JsonResponse({'status': 'ok', 'service': 'rs-connector-django'})),
+    path('health/full/', health_full),
     # Racine -> admin Django sur /console (coexiste avec le /admin du back-office Node).
     path('', RedirectView.as_view(url='/console/', permanent=False)),
     path('', include('hub.urls')),
