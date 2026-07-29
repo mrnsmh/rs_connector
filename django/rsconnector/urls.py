@@ -33,10 +33,18 @@ def health_full(request):
     return Response({"overall": overall, "checks": checks})
 
 
+from hub.admin_views import AdminAuthView, AdminGoogleView, AdminLogoutView
+
+
 urlpatterns = [
     path('console/', admin.site.urls),
     path('health', lambda request: JsonResponse({'status': 'ok', 'service': 'rs-connector-django'})),
     path('health/full/', health_full),
+    # Auth SPA
+    path('admin', AdminAuthView.as_view()),
+    path('admin/', AdminAuthView.as_view()),
+    path('admin/google', AdminGoogleView.as_view()),
+    path('admin/logout', AdminLogoutView.as_view()),
     # Racine -> admin Django sur /console (coexiste avec le /admin du back-office Node).
     path('', RedirectView.as_view(url='/console/', permanent=False)),
     path('', include('hub.urls')),
