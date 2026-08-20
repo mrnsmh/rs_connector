@@ -12,6 +12,8 @@ WORKDIR /app
 
 # Copier package.json ET package-lock.json pour un build reproductible via `npm ci`.
 COPY package.json package-lock.json ./
+# Dépendance vendored (@whtsp/core, tarball local) : requise AVANT npm ci.
+COPY vendor ./vendor
 RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY src ./src
