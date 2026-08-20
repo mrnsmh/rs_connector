@@ -20,6 +20,11 @@ const DEFAULT_CHANNEL_TYPE = 'whatsapp_baileys';
 function createConnectionManager(deps, options = {}) {
   const { baseAuthDir, joinPath } = deps;
   const connections = new Map(); // connection_id -> { adapter, channelType }
+  // Mutex de session : une SEULE création d'adaptateur par connection_id à la fois.
+  // Protège le répertoire d'auth (fichiers Baileys) contre les créations concurrentes —
+  // deux adaptateurs sur le même authDir = double socket / double QR. Même si la création
+  // devient asynchrone un jour, les appelants concurrents récupèrent la même promesse.
+  const creating = new Map(); // connection_id -> Promise<adapter>
   // Index de référence de canal ("channelType:ref" -> connection_id) pour router un
   // événement entrant push (ex. webhook Meta par phone_number_id) vers sa connexion.
   const channelRefIndex = new Map();
@@ -58,32 +63,41 @@ function createConnectionManager(deps, options = {}) {
   async function getOrCreate(connectionId, connOptions = {}) {
     if (!connectionId) throw new Error('connection_id requis');
     if (connections.has(connectionId)) return connections.get(connectionId).adapter;
+    // Mutex : une création en cours → les appelants concurrents attendent la même promesse.
+    if (creating.has(connectionId)) return creating.get(connectionId);
 
-    const channelType = connOptions.channelType || DEFAULT_CHANNEL_TYPE;
-    const factory = resolveFactory(channelType);
+    const creatingPromise = Promise.resolve().then(() => {
+      const channelType = connOptions.channelType || DEFAULT_CHANNEL_TYPE;
+      const factory = resolveFactory(channelType);
 
-    const mergedOptions = {
-      ...connOptions,
-      // connectionId transmis à l'adaptateur (ex. scoping du cache contacts côté WhatsApp).
-      connectionId,
-      onConnectionStateChange: onConnectionStateChange
-        ? (state) => onConnectionStateChange(connectionId, state)
-        : connOptions.onConnectionStateChange,
-      onMessageStatusUpdate: onMessageStatusUpdate
-        ? (payload) => onMessageStatusUpdate(connectionId, payload)
-        : connOptions.onMessageStatusUpdate,
-      onIncomingMessage: onIncomingMessage
-        ? (payload) => onIncomingMessage(connectionId, payload)
-        : connOptions.onIncomingMessage,
-    };
+      const mergedOptions = {
+        ...connOptions,
+        // connectionId transmis à l'adaptateur (ex. scoping du cache contacts côté WhatsApp).
+        connectionId,
+        onConnectionStateChange: onConnectionStateChange
+          ? (state) => onConnectionStateChange(connectionId, state)
+          : connOptions.onConnectionStateChange,
+        onMessageStatusUpdate: onMessageStatusUpdate
+          ? (payload) => onMessageStatusUpdate(connectionId, payload)
+          : connOptions.onMessageStatusUpdate,
+        onIncomingMessage: onIncomingMessage
+          ? (payload) => onIncomingMessage(connectionId, payload)
+          : connOptions.onIncomingMessage,
+      };
 
-    const channelDeps = (deps.channelDepsByType && deps.channelDepsByType[channelType]) || deps.sessionDeps;
-    const adapter = factory(channelDeps, authDirFor(connectionId), mergedOptions);
-    connections.set(connectionId, { adapter, channelType });
-    if (adapter && adapter.channelRef != null) {
-      channelRefIndex.set(`${channelType}:${adapter.channelRef}`, connectionId);
-    }
-    return adapter;
+      const channelDeps = (deps.channelDepsByType && deps.channelDepsByType[channelType]) || deps.sessionDeps;
+      const adapter = factory(channelDeps, authDirFor(connectionId), mergedOptions);
+      connections.set(connectionId, { adapter, channelType });
+      if (adapter && adapter.channelRef != null) {
+        channelRefIndex.set(`${channelType}:${adapter.channelRef}`, connectionId);
+      }
+      return adapter;
+    }).finally(() => {
+      creating.delete(connectionId);
+    });
+
+    creating.set(connectionId, creatingPromise);
+    return creatingPromise;
   }
 
   function get(connectionId) {

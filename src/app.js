@@ -74,6 +74,40 @@ function createApp(options = {}) {
     return true;
   }
 
+  /**
+   * Contexte de risque anti-ban d'une session. Pour le canal `whatsapp_whtsp`, l'adaptateur
+   * expose `antiBan.getState()` (HealthMonitor de @whtsp/core) : risque low/medium/high/critical,
+   * score, raisons, taux de livraison. Pour les canaux sans anti-ban (whatsapp_baileys, telegram,
+   * email, cloud), on signale honnêtement `antiban_non_actif` — additif, jamais bloquant.
+   */
+  function riskContext(session) {
+    const antiBan = session && typeof session.antiBan === 'object' ? session.antiBan : null;
+    const state = antiBan && typeof antiBan.getState === 'function' ? antiBan.getState() : null;
+    const health = state && state.health ? state.health : null;
+    if (!health) {
+      return {
+        risk: { level: 'unknown', score: -1, reasons: ['antiban_non_actif'] },
+        deliveryRate: null,
+        uptimeSeconds: null,
+        paused: false,
+        recommendedAction: 'none',
+      };
+    }
+    const level = ['low', 'medium', 'high', 'critical'].includes(health.risk) ? health.risk : 'unknown';
+    const reasons = Array.isArray(health.reasons) ? health.reasons : [];
+    const paused = !!state.paused;
+    let recommendedAction = 'none';
+    if (level === 'high') recommendedAction = 'reduce_volume';
+    if (level === 'critical') recommendedAction = 'pause_and_fallback';
+    return {
+      risk: { level, score: typeof health.score === 'number' ? health.score : -1, reasons },
+      deliveryRate: typeof state.deliveryRate === 'number' ? state.deliveryRate : null,
+      uptimeSeconds: typeof health.uptime === 'number' ? health.uptime : null,
+      paused,
+      recommendedAction: paused ? 'paused' : recommendedAction,
+    };
+  }
+
   // Liste toutes les connections actives (toutes connexions) — utile pour un tableau de bord.
   app.get('/connections', requireAdmin, (req, res) => {
     if (!requireConnectionManager(req, res)) return;
@@ -103,6 +137,18 @@ function createApp(options = {}) {
     const session = connectionManager.get(req.params.connectionId);
     if (!session) return res.status(404).json({ error: 'Session inconnue pour cette connexion' });
     res.status(200).json(session.getState());
+  });
+
+  // Miroir back-office de la télémétrie de risque anti-ban (voir /v1/connections/:id/health).
+  app.get('/connections/:connectionId/health', requireAdmin, (req, res) => {
+    if (!requireConnectionManager(req, res)) return;
+    const session = connectionManager.get(req.params.connectionId);
+    if (!session) return res.status(404).json({ error: 'Session inconnue pour cette connexion' });
+    res.status(200).json({
+      connectionId: req.params.connectionId,
+      status: session.getState().status,
+      ...riskContext(session),
+    });
   });
 
   // Task 6 : configuration de l'URL webhook propre à une connexion (destinataire des
@@ -328,6 +374,29 @@ function createApp(options = {}) {
       });
     } catch (err) {
       logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur détail connexion /v1');
+      return res.status(500).json({ error: 'Erreur interne' });
+    }
+  });
+
+  // Télémétrie de risque anti-ban d'une connexion possédée par l'application appelante.
+  // Contrat (Phase 4 zero-ban) : risque low/medium/high/critical + score + raisons + taux de
+  // livraison + action recommandée — permet à l'application (DeskManager/Django) de basculer
+  // en fallback (ex. Meta Cloud API) quand le score passe en zone critique.
+  app.get('/v1/connections/:connectionId/health', apiKeyAuth, async (req, res) => {
+    if (!requireConnectionManager(req, res)) return;
+    try {
+      const row = await db.getConnectionForApplication(req.application.id, req.params.connectionId);
+      if (!row) return res.status(404).json({ error: 'connection_not_found' });
+      const session = connectionManager.get(req.params.connectionId);
+      const state = session ? session.getState() : null;
+      return res.status(200).json({
+        connectionId: row.connection_id,
+        channelType: row.channel_type,
+        status: state ? state.status : row.status,
+        ...riskContext(session),
+      });
+    } catch (err) {
+      logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur health connexion /v1');
       return res.status(500).json({ error: 'Erreur interne' });
     }
   });

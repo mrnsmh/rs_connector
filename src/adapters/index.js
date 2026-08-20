@@ -10,6 +10,7 @@
  */
 
 const whatsappBaileys = require('./whatsapp-baileys');
+const whatsappWhtsp = require('./whatsapp-whtsp');
 const telegram = require('./telegram');
 const email = require('./email');
 const whatsappCloud = require('./whatsapp-cloud');
@@ -27,8 +28,9 @@ function register(adapter) {
   adapters.set(adapter.channelType, adapter);
 }
 
-// Canaux enregistrés : WhatsApp (Baileys + Cloud API Meta), Telegram, Email.
+// Canaux enregistrés : WhatsApp (Baileys + Whtsp anti-ban + Cloud API Meta), Telegram, Email.
 register(whatsappBaileys);
+register(whatsappWhtsp);
 register(telegram);
 register(email);
 register(whatsappCloud);

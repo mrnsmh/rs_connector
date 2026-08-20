@@ -157,6 +157,7 @@ function createRealConnectionManager(
   // Dépendances par canal pour les adaptateurs non-WhatsApp. Telegram parle à l'API Bot
   // via HTTP (fetch natif de Node 20+). WhatsApp continue d'utiliser sessionDeps (fallback).
   const channelDepsByType = {
+    whatsapp_whtsp: { fs, logger, db }, // @whtsp/core embarque Baileys ; fs/logger/db pour LID + logs.
     telegram: { fetchFn: fetch, logger },
     whatsapp_cloud: { fetchFn: fetch, logger },
     email: {

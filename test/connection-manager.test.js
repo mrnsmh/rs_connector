@@ -108,6 +108,32 @@ test('getOrCreate est idempotent : ne recrée pas une session existante pour la 
   assert.deepEqual(manager.list(), ['connexion-a']);
 });
 
+test('mutex de session : des getOrCreate concurrents produisent UNE seule session (protège le authDir)', async () => {
+  const { deps: sessionDeps, createdSockets } = buildMockSessionDeps();
+  const manager = createConnectionManager({
+    createSession,
+    baseAuthDir: '/data/auth',
+    joinPath: (...parts) => parts.join('/'),
+    sessionDeps,
+  });
+
+  const results = await Promise.all(Array.from({ length: 10 }, () => manager.getOrCreate('connexion-a', { autoReconnect: false })));
+
+  // Tous les appelants reçoivent la MÊME instance d'adaptateur.
+  for (const r of results) {
+    assert.equal(r, results[0]);
+  }
+  assert.deepEqual(manager.list(), ['connexion-a']);
+  assert.equal(results[0].getState().authDir, '/data/auth/connexion-a');
+
+  // Après résolution, le mutex est relâché : une nouvelle création (autre connexion) marche.
+  const other = await manager.getOrCreate('connexion-b', { autoReconnect: false });
+  assert.notEqual(other, results[0]);
+  // Aucun socket n'a encore été ouvert (connect() n'a pas été appelé) : la création d'adaptateur
+  // est purement en mémoire.
+  assert.equal(createdSockets.length, 0);
+});
+
 test('list() et getAllStates() reflètent toutes les connexions enregistrées', async () => {
   const { deps: sessionDeps } = buildMockSessionDeps();
   const manager = createConnectionManager({
