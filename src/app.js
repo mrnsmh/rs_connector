@@ -123,7 +123,14 @@ function createApp(options = {}) {
     if (!requireConnectionManager(req, res)) return;
     try {
       const { connectionId } = req.params;
-      const session = await connectionManager.getOrCreate(connectionId);
+      // Résout le canal depuis la DB (channel_type réel de la connexion, ex. whatsapp_whtsp
+      // pour le moteur anti-ban) — jamais le défaut whatsapp_baileys en dur.
+      let channelType;
+      if (db) {
+        const row = await db.getConnection(connectionId).catch(() => null);
+        channelType = row && row.channel_type ? row.channel_type : undefined;
+      }
+      const session = await connectionManager.getOrCreate(connectionId, { channelType });
       await session.connect();
       res.status(200).json(session.getState());
     } catch (err) {
@@ -412,7 +419,8 @@ function createApp(options = {}) {
     try {
       const row = await db.getConnectionForApplication(req.application.id, req.params.connectionId);
       if (!row) return res.status(404).json({ error: 'connection_not_found' });
-      const session = await connectionManager.getOrCreate(req.params.connectionId);
+      // channel_type réel de la connexion (ex. whatsapp_whtsp pour le moteur anti-ban).
+      const session = await connectionManager.getOrCreate(req.params.connectionId, { channelType: row.channel_type || undefined });
       await session.connect();
       return res.status(200).json(session.getState());
     } catch (err) {
