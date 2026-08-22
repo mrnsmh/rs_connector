@@ -23,6 +23,7 @@ const channelType = 'whatsapp_baileys';
 // s'authentifie par QR, gère l'entrant/sortant et remonte des accusés de statut).
 const capabilities = {
   auth: 'qr',
+  pairingCode: true, // appairage alternatif par numéro (WhatsApp → « Lier avec le numéro »)
   inbound: true,
   outbound: true,
   statusReceipts: true,

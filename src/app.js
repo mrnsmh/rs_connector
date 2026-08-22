@@ -139,6 +139,37 @@ function createApp(options = {}) {
     }
   });
 
+  // Appairage par CODE (alternative au scan QR) : demande à WhatsApp un code à 8 caractères
+  // pour le numéro donné (WhatsApp → Appareils connectés → « Lier avec le numéro »).
+  // Le canal est résolu depuis la DB (même logique que la route QR). Erreurs métier
+  // (numéro invalide, session déjà appairée, session morte) remontées avec leur statusCode.
+  app.post('/connections/:connectionId/pairing-code', requireAdmin, async (req, res) => {
+    if (!requireConnectionManager(req, res)) return;
+    const { connectionId } = req.params;
+    try {
+      const phone = (req.body && req.body.phone) || '';
+      let channelType;
+      if (db) {
+        const row = await db.getConnection(connectionId).catch(() => null);
+        channelType = row && row.channel_type ? row.channel_type : undefined;
+      }
+      const session = await connectionManager.getOrCreate(connectionId, { channelType });
+      if (typeof session.requestPairingCode !== 'function') {
+        return res.status(501).json({ error: "Canal sans support d'appairage par code." });
+      }
+      await session.connect();
+      const code = await session.requestPairingCode(phone);
+      return res.status(200).json({ status: 'pairing_code_sent', pairingCode: code, ...session.getState() });
+    } catch (err) {
+      if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+        logger.warn({ err: err.message, connectionId }, 'Appairage par code refusé');
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      logger.error({ err: err.message, connectionId }, 'Erreur appairage par code');
+      return res.status(500).json({ error: 'Erreur interne' });
+    }
+  });
+
   app.get('/connections/:connectionId', requireAdmin, (req, res) => {
     if (!requireConnectionManager(req, res)) return;
     const session = connectionManager.get(req.params.connectionId);
@@ -425,6 +456,34 @@ function createApp(options = {}) {
       return res.status(200).json(session.getState());
     } catch (err) {
       logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur récupération QR /v1');
+      return res.status(500).json({ error: 'Erreur interne' });
+    }
+  });
+
+  // Appairage par CODE (alternative au scan QR) pour une connexion possédée par
+  // l'application appelante. Demande à WhatsApp un code à 8 caractères pour le numéro
+  // donné (WhatsApp → Appareils connectés → « Lier avec le numéro »). Même scoping et
+  // même résolution de channel_type que la route QR ci-dessus.
+  app.post('/v1/connections/:connectionId/pairing-code', apiKeyAuth, async (req, res) => {
+    if (!connectionManager) {
+      return res.status(503).json({ error: 'Gestionnaire de session non initialisé' });
+    }
+    try {
+      const row = await db.getConnectionForApplication(req.application.id, req.params.connectionId);
+      if (!row) return res.status(404).json({ error: 'connection_not_found' });
+      const session = await connectionManager.getOrCreate(req.params.connectionId, { channelType: row.channel_type || undefined });
+      if (typeof session.requestPairingCode !== 'function') {
+        return res.status(501).json({ error: "Canal sans support d'appairage par code." });
+      }
+      await session.connect();
+      const code = await session.requestPairingCode((req.body || {}).phone);
+      return res.status(200).json({ status: 'pairing_code_sent', pairingCode: code, ...session.getState() });
+    } catch (err) {
+      if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+        logger.warn({ err: err.message, connectionId: req.params.connectionId }, 'Appairage par code refusé /v1');
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      logger.error({ err: err.message, connectionId: req.params.connectionId }, 'Erreur appairage par code /v1');
       return res.status(500).json({ error: 'Erreur interne' });
     }
   });

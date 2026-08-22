@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { createSession, DEFAULT_POSSIBLY_BANNED_THRESHOLD } = require('../src/session');
+const { createSession, DEFAULT_POSSIBLY_BANNED_THRESHOLD, UNPAIRED_MAX_AUTO_RECONNECTS } = require('../src/session');
 
 /**
  * Construit un jeu de dépendances Baileys entièrement mocké : aucun socket réel n'est
@@ -143,7 +143,7 @@ test('le seuil par défaut est appliqué si aucune option n\'est fournie', async
   assert.equal(session.getState().status, 'possibly_banned');
 });
 
-test('appairage en cours (non enregistré) : les timeouts 408 ne déclenchent PAS possibly_banned', async () => {
+test('appairage non finalisé : pas de possibly_banned, boucle stoppée en qr_expired', async () => {
   const { deps, sockEmitter } = buildMockDeps({ registered: false });
   const threshold = 3;
   const session = createSession(deps, '/tmp/test-auth', { possiblyBannedThreshold: threshold, autoReconnect: false });
@@ -151,15 +151,24 @@ test('appairage en cours (non enregistré) : les timeouts 408 ne déclenchent PA
   await session.connect();
   sockEmitter.emit('connection.update', { qr: 'QR_EN_ATTENTE_DE_SCAN' });
 
-  // Fermetures répétées par timeout (408) pendant l'attente du scan, au-delà du seuil :
-  for (let i = 0; i < threshold + 2; i++) {
+  // Quelques fermetures par timeout (408) pendant l'attente du scan sont tolérées
+  // (reconnexion automatique LIMITÉE), sans jamais être qualifiées de bannissement :
+  for (let i = 0; i < UNPAIRED_MAX_AUTO_RECONNECTS - 1; i++) {
+    sockEmitter.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 408 } } },
+    });
+    assert.notEqual(session.getState().status, 'possibly_banned');
+  }
+
+  // Au-delà, état TERMINAL qr_expired : le QR est mort, la boucle est arrêtée.
+  for (let i = 0; i < 5; i++) {
     sockEmitter.emit('connection.update', {
       connection: 'close',
       lastDisconnect: { error: { output: { statusCode: 408 } } },
     });
   }
-
   const state = session.getState();
-  assert.notEqual(state.status, 'possibly_banned', "l'appairage ne doit jamais être qualifié de bannissement");
-  assert.equal(state.status, 'qr_required', 'reste en attente de scan tant que non enregistré');
+  assert.equal(state.status, 'qr_expired', 'la boucle doit s\u2019arrêter sur un état terminal explicite');
+  assert.equal(state.qr, null, 'le QR expiré ne doit plus être exposé');
 });

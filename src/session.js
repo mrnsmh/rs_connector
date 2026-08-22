@@ -16,6 +16,9 @@
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const DEFAULT_POSSIBLY_BANNED_THRESHOLD = 8;
+// Avant appairage : nombre maximal de reconnexions automatiques tolérées (515 post-scan,
+// coupures réseau) avant de basculer en 'qr_expired' et d'arrêter la boucle.
+const UNPAIRED_MAX_AUTO_RECONNECTS = 3;
 const { fromBaileysStatusCode } = require('./message-status');
 const { createContactResolver } = require('./contact-resolver');
 
@@ -74,6 +77,11 @@ function createSession(deps, authDir, options = {}) {
   let reconnectTimer = null;
   let connectingPromise = null;
   let connectionGeneration = 0;
+  // Appairage par code (WhatsApp → Appareils connectés → « Lier avec le numéro »).
+  let pairingCode = null;
+  let pairingCodeAt = null;
+  // Auth state courant (accès à creds.registered hors du scope de connect()).
+  let authState = null;
 
   // Task 5 : résolution LID→numéro réel, isolée et testée (voir contact-resolver.js).
   // Correctif post-relecture critique : db + connectionId transmis pour activer le cache
@@ -116,6 +124,11 @@ function createSession(deps, authDir, options = {}) {
     return connectionStatus === 'connected';
   }
 
+  /** Socket WebSocket sous-jacent vivant (connexion WS ouverte) ? */
+  function socketAliveNow() {
+    return !!(sock && sock.ws && typeof sock.ws.readyState === 'number' && sock.ws.readyState === 1);
+  }
+
   function getState() {
     const connected = isConnected();
     return {
@@ -123,6 +136,8 @@ function createSession(deps, authDir, options = {}) {
       status: connected ? 'connected' : connectionStatus,
       qr: lastQr,
       qrGeneratedAt: lastQrGeneratedAt,
+      pairingCode,
+      pairingCodeAt,
       lastDisconnectReason,
       reconnectAttempts,
       authDir,
@@ -173,9 +188,19 @@ function createSession(deps, authDir, options = {}) {
     }, delay);
   }
 
-  async function connect() {
+  async function connect({ force = false } = {}) {
     if (connectingPromise) return connectingPromise;
     if (isConnected()) return sock;
+
+    // Un socket VIVANT en attente d'appairage est conservé : recréer le socket détruirait
+    // le QR actuellement affiché à l'utilisateur (chaque sondage GET /qr invaliderait le
+    // QR avant qu'il ait pu être scanné). Seul un `force` (régénération explicite) ou un
+    // socket mort/absent déclenchent une nouvelle initialisation.
+    const socketAlive = socketAliveNow();
+    if (!force && socketAlive
+      && (connectionStatus === 'qr_required' || connectionStatus === 'pairing_code_sent' || connectionStatus === 'connecting')) {
+      return sock;
+    }
 
     clearReconnectTimer();
     const generation = ++connectionGeneration;
@@ -184,6 +209,7 @@ function createSession(deps, authDir, options = {}) {
 
     connectingPromise = (async () => {
       const { state, saveCreds } = await useMultiFileAuthState(authDir);
+      authState = state;
       const { version, isLatest } = await fetchLatestBaileysVersion();
 
       if (generation !== connectionGeneration) return sock;
@@ -227,6 +253,8 @@ function createSession(deps, authDir, options = {}) {
           connectionStatus = 'connected';
           lastQr = null;
           lastQrGeneratedAt = null;
+          pairingCode = null;
+          pairingCodeAt = null;
           lastDisconnectReason = null;
           logger.info('WhatsApp connecté avec succès');
           notifyConnectionStateChange();
@@ -254,21 +282,45 @@ function createSession(deps, authDir, options = {}) {
 
           // Point complémentaire (AUDIT.md) : au-delà du seuil de tentatives consécutives,
           // on distingue explicitement un possible bannissement plutôt que de reconnecter
-          // indéfiniment en silence. IMPORTANT : cela ne vaut que pour un compte DÉJÀ appairé
-          // (state.creds.registered). Avant l'appairage (attente de scan QR), les fermetures
-          // — timeout 408 pendant l'attente, redémarrage 515 juste après le scan — sont
-          // normales et ne doivent PAS être qualifiées de bannissement (faux positif).
+          // indéfiniment en silence.
           reconnectAttempts++;
           const isRegistered = !!(state && state.creds && state.creds.registered);
-          if (isRegistered && reconnectAttempts >= possiblyBannedThreshold) {
+
+          if (!isRegistered) {
+            // Appairage non finalisé — AUCUNE boucle infinie :
+            // - 515 (restartRequired) = redémarrage attendu juste après un scan réussi →
+            //   relance immédiate pour terminer l'enregistrement ;
+            // - quelques tentatives tolérées (coupure réseau pendant l'attente) ;
+            // - sinon état terminal 'qr_expired' : le QR est mort (Baileys abandonne après
+            //   5 rotations), on STOPPE les reconnexions. Le QR/code sera régénéré uniquement
+            //   à la demande (GET /qr avec force, ou POST pairing-code).
+            lastQr = null;
+            lastQrGeneratedAt = null;
+            pairingCode = null;
+            pairingCodeAt = null;
+            if (statusCode === DisconnectReason.restartRequired || reconnectAttempts < UNPAIRED_MAX_AUTO_RECONNECTS) {
+              connectionStatus = 'connecting';
+              notifyConnectionStateChange();
+              const delay = Math.min(1_000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
+              logger.info({ attempt: reconnectAttempts, delayMs: delay }, 'Reconnexion planifiée (appairage en cours)');
+              scheduleReconnect(delay);
+            } else {
+              connectionStatus = 'qr_expired';
+              notifyConnectionStateChange();
+              logger.warn(
+                { authDir, reconnectAttempts, statusCode },
+                "Appairage non finalisé — arrêt des tentatives automatiques. Régénérez le QR ou utilisez le code d'appairage.",
+              );
+            }
+            return;
+          }
+
+          if (reconnectAttempts >= possiblyBannedThreshold) {
             connectionStatus = 'possibly_banned';
             logger.error(
               { authDir, reconnectAttempts, statusCode },
               `Bannissement possible : ${reconnectAttempts} tentatives de reconnexion consécutives échouées`,
             );
-          } else if (!isRegistered) {
-            // Appairage non finalisé : on reste en attente de QR (ou en connexion), sans alarme.
-            connectionStatus = lastQr ? 'qr_required' : 'connecting';
           } else {
             connectionStatus = 'disconnected';
           }
@@ -356,13 +408,59 @@ function createSession(deps, authDir, options = {}) {
     return connectingPromise;
   }
 
+  /**
+   * Demande un code d'appairage à 8 caractères pour lier un compte WhatsApp par NUMÉRO
+   * (WhatsApp → Appareils connectés → « Lier avec le numéro de téléphone »), alternative
+   * au scan du QR. Le socket doit être initialisé (connect()) et la session non appairée.
+   *
+   * @param {string} phoneNumber - Numéro au format international, chiffres uniquement
+   *   (ex. "212612345678"). Erreur statusCode 400 sinon.
+   * @returns {Promise<string>} Le code à 8 caractères (ex. "ABCD-1234").
+   */
+  async function requestPairingCode(phoneNumber) {
+    const digits = String(phoneNumber || '').replace(/[^0-9]/g, '');
+    if (!/^\d{8,15}$/.test(digits)) {
+      const err = new Error("Numéro invalide : format international sans « + » ni espaces (ex. 212612345678)");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!sock || !socketAliveNow()) {
+      const err = new Error('Session WhatsApp non initialisée — régénérez le QR ou réessayez.');
+      err.statusCode = 503;
+      throw err;
+    }
+    if (isConnected() || !!(authState && authState.creds && authState.creds.registered)) {
+      const err = new Error('Session déjà appairée — déconnectez-la avant de re-appairer.');
+      err.statusCode = 409;
+      throw err;
+    }
+    if (typeof sock.requestPairingCode !== 'function') {
+      const err = new Error("Appairage par code non supporté par cette session.");
+      err.statusCode = 501;
+      throw err;
+    }
+    const code = await sock.requestPairingCode(digits);
+    pairingCode = code;
+    pairingCodeAt = new Date().toISOString();
+    connectionStatus = 'pairing_code_sent';
+    notifyConnectionStateChange();
+    logger.info({ connectionId: options.connectionId }, "Code d'appairage généré");
+    return code;
+  }
+
   return {
     connect,
     isConnected,
     getState,
     sendMessage,
+    requestPairingCode,
     _internal: { clearAuthDir, contactResolver }, // exposé uniquement pour les tests
   };
 }
 
-module.exports = { createSession, MAX_RECONNECT_DELAY_MS, DEFAULT_POSSIBLY_BANNED_THRESHOLD };
+module.exports = {
+  createSession,
+  MAX_RECONNECT_DELAY_MS,
+  DEFAULT_POSSIBLY_BANNED_THRESHOLD,
+  UNPAIRED_MAX_AUTO_RECONNECTS,
+};

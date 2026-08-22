@@ -26,6 +26,7 @@ const channelType = 'whatsapp_whtsp';
 
 const capabilities = {
   auth: 'qr',
+  pairingCode: true, // appairage alternatif par numéro (WhatsApp → « Lier avec le numéro »)
   inbound: true,
   outbound: true,
   statusReceipts: true,
@@ -56,6 +57,8 @@ function createAdapter(deps, authDir, options = {}) {
   let lastQrGeneratedAt = null;
   let lastDisconnectReason = null;
   let reconnectAttempts = 0;
+  let pairingCode = null;
+  let pairingCodeAt = null;
   let destroyed = false;
 
   function isConnected() {
@@ -69,6 +72,8 @@ function createAdapter(deps, authDir, options = {}) {
       status: connected ? 'connected' : status,
       qr: lastQr,
       qrGeneratedAt: lastQrGeneratedAt,
+      pairingCode,
+      pairingCodeAt,
       lastDisconnectReason,
       reconnectAttempts,
       authDir,
@@ -117,6 +122,8 @@ function createAdapter(deps, authDir, options = {}) {
         status = 'connected';
         lastQr = null;
         lastQrGeneratedAt = null;
+        pairingCode = null;
+        pairingCodeAt = null;
         lastDisconnectReason = null;
         log.info({ connectionId }, 'WhatsApp connecté (whatsapp_whtsp)');
         notifyState();
@@ -246,12 +253,53 @@ function createAdapter(deps, authDir, options = {}) {
     return { jid, messageId: result?.key?.id || null };
   }
 
+  /**
+   * Demande un code d'appairage à 8 caractères (alternative au scan QR) via le socket
+   * Baileys brut exposé par @whtsp/core (`client.socket`). Même contrat que session.js.
+   *
+   * @param {string} phoneNumber - Numéro international, chiffres uniquement (ex. "212612345678").
+   * @returns {Promise<string>} Le code à 8 caractères (ex. "ABCD-1234").
+   */
+  async function requestPairingCode(phoneNumber) {
+    const digits = String(phoneNumber || '').replace(/[^0-9]/g, '');
+    if (!/^\d{8,15}$/.test(digits)) {
+      const err = new Error("Numéro invalide : format international sans « + » ni espaces (ex. 212612345678)");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (destroyed) {
+      const err = new Error('Connexion détruite.');
+      err.statusCode = 503;
+      throw err;
+    }
+    const c = await ensureClient();
+    const sk = c.socket;
+    if (!sk || typeof sk.requestPairingCode !== 'function') {
+      const err = new Error('Appairage par code indisponible sur ce client.');
+      err.statusCode = 501;
+      throw err;
+    }
+    if (isConnected()) {
+      const err = new Error('Session déjà appairée — déconnectez-la avant de re-appairer.');
+      err.statusCode = 409;
+      throw err;
+    }
+    const code = await sk.requestPairingCode(digits);
+    pairingCode = code;
+    pairingCodeAt = new Date().toISOString();
+    status = 'pairing_code_sent';
+    notifyState();
+    log.info({ connectionId }, "Code d'appairage généré (whatsapp_whtsp)");
+    return code;
+  }
+
   return {
     connect,
     disconnect,
     isConnected,
     getState,
     sendMessage,
+    requestPairingCode,
     // Télémétrie anti-ban exposée pour GET /v1/connections/:id/health.
     antiBan: {
       getState: () => (client && client.antiBan ? client.antiBan.getState() : null),
