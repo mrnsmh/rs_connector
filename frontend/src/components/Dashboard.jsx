@@ -5,6 +5,7 @@ import Logo from './Logo.jsx';
 
 const CHANNEL_LABELS = {
   whatsapp_baileys: 'WhatsApp · Baileys (QR)',
+  whatsapp_whtsp: 'WhatsApp · Anti-ban (QR)',
   whatsapp_cloud: 'WhatsApp Cloud · Meta',
   telegram: 'Telegram',
   email: 'Email · SMTP/IMAP',
